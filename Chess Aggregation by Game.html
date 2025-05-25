@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chess Outcome Tracker</title>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      background: #0a0a0a;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    #header-info {
+      text-align: center;
+      padding-top: 10px;
+      line-height: 1.4;
+      font-weight: bold;
+    }
+
+    #header-title {
+      font-size: 24px;
+      margin-bottom: 5px;
+    }
+
+    #upload-section {
+      margin-bottom: 10px;
+    }
+
+    .white { color:#0096FF; }
+    .black { color: red; }
+    .draw { color: magenta; }
+
+    #sidePercentages {
+      font-size: 1em;
+      margin-top: 5px;
+    }
+
+    #sideCounts {
+      font-size: 0.8em;
+      color: grey;
+      margin-top: 4px;
+    }
+
+    #based-on { font-size: 0.95em; color: #555; margin-top: 4px; }
+    #leader { margin-top: 6px; font-size: 1.2em; font-weight: 700; }
+
+    #chart-container {
+      width: 95%;
+      height: 65vh;
+    }
+
+    #caption {
+      text-align: center;
+      font-size: 0.95em;
+      margin: 5px;
+      color: #444;
+    }
+
+    input[type="file"] {
+      margin-top: 5px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="header-info">
+    <div id="header-title">♟️Chess Win Percentages 2025</div>
+    <div id="upload-section">
+      Upload Chess CSV: <input type="file" id="csvFile" accept=".csv" />
+    </div>
+    
+    <div id="sidePercentages">
+      <span class="white">White Wins: 0%</span> |
+      <span class="black">Black Wins: 0%</span> |
+      <span class="draw">Draws: 0%</span>
+    </div>
+    <div id="sideCounts">
+      White games: 0 — Black games: 0
+    </div>
+
+    <div id="based-on">Based on 0 games</div>
+    <div id="leader">Leader: N/A</div>
+  </div>
+
+  <div id="chart-container">
+    <div id="chessChart" style="width: 100%; height: 100%;"></div>
+  </div>
+
+  <div id="caption">White and Black win percentages are based only on games played as that side. Draw percentages are based on all games.</div>
+
+  <script>
+    function parseCSV(text) {
+      const lines = text.trim().split('\n');
+      const headers = lines[0].split(',');
+      return lines.slice(1).map(line => {
+        const values = line.split(',');
+        const obj = {};
+        headers.forEach((h, i) => obj[h.trim()] = values[i] ? values[i].trim() : '');
+        return obj;
+      });
+    }
+
+    function updateHeader(whiteGames, blackGames, draws, totalGames, whiteWinPct, blackWinPct, drawPct, leader, leaderPct) {
+      document.getElementById('sidePercentages').innerHTML =
+        `<span class="white">White Wins: ${whiteWinPct.toFixed(1)}%</span> |
+         <span class="black">Black Wins: ${blackWinPct.toFixed(1)}%</span> |
+         <span class="draw">Draws: ${drawPct.toFixed(1)}%</span>`;
+
+      document.getElementById('sideCounts').textContent =
+        `White games: ${whiteGames} — Black games: ${blackGames}`;
+
+      document.getElementById('based-on').textContent =
+        `Based on ${totalGames} games`;
+
+      document.getElementById('leader').textContent =
+        leader === 'None' ? `Leader: N/A` : `Leader: ${leader} by ${leaderPct.toFixed(2)}%`;
+    }
+
+function processData(data) {
+  data = data.filter(d => d['Outcome'] && !['rule violation', 'future game'].includes(d['Outcome'].toLowerCase()));
+  if (data[0] && data[0]['Date']) {
+    data.sort((a, b) => new Date(a['Date']) - new Date(b['Date']));
+  }
+
+  let whiteWins = 0, blackWins = 0, draws = 0;
+  let whiteGames = 0, blackGames = 0;
+  let whitePct = [], blackPct = [], drawPct = [];
+  let totalGames = 0;
+
+  // Loop through each game and update counts & percentages
+  data.forEach((d, i) => {
+    const side = d['Side'].toLowerCase();
+    const outcome = d['Outcome'];
+
+    if (side === 'white') whiteGames++;
+    if (side === 'black') blackGames++;
+    totalGames++;
+
+    if (outcome === 'Draw') draws++;
+    else if (outcome === 'Win') {
+      if (side === 'white') whiteWins++;
+      if (side === 'black') blackWins++;
+    }
+
+    // Calculate cumulative percentages *after* updating counts for current game
+    whitePct.push(whiteGames > 0 ? (whiteWins / whiteGames) * 100 : 0);
+    blackPct.push(blackGames > 0 ? (blackWins / blackGames) * 100 : 0);
+    drawPct.push((draws / totalGames) * 100);
+  });
+
+  const totalGamesArr = data.map((_, i) => i + 1);  // This is correct: game numbers starting at 1
+
+  // Determine leader for header info
+  let leader = 'None';
+  let w = whitePct.at(-1) || 0;
+  let b = blackPct.at(-1) || 0;
+  let d = drawPct.at(-1) || 0;
+  let leaderPct = 0;
+
+  if (w > b && w > d) {
+    leader = 'White';
+    leaderPct = w - Math.max(b, d);
+  } else if (b > w && b > d) {
+    leader = 'Black';
+    leaderPct = b - Math.max(w, d);
+  } else if (d > w && d > b) {
+    leader = 'Draw';
+    leaderPct = d - Math.max(w, b);
+  }
+
+  updateHeader(whiteGames, blackGames, draws, totalGames, w, b, d, leader, leaderPct);
+
+  return { totalGamesArr, whitePct, blackPct, drawPct };
+}
+
+    function renderChart(data) {
+      const xVals = data.totalGamesArr;
+      const xTicks = xVals.filter(x => x % 5 === 0);
+
+      const traces = [
+        {
+          x: xVals,
+          y: data.whitePct,
+          mode: 'lines+markers',
+          name: 'White Wins %',
+          line: { color: '#0096FF', width: 3 },
+          marker: { size: 6 }
+        },
+        {
+          x: xVals,
+          y: data.blackPct,
+          mode: 'lines+markers',
+          name: 'Black Wins %',
+          line: { color: 'red', width: 3 },
+          marker: { size: 6 }
+        },
+        {
+          x: xVals,
+          y: data.drawPct,
+          mode: 'lines+markers',
+          name: 'Draws %',
+          line: { color: 'magenta', width: 3 },
+          marker: { size: 6 }
+        }
+      ];
+
+      const layout = {
+        title: 'Cumulative Chess Outcome Percentages by Game',
+        xaxis: {
+          title: 'Game Number',
+          tickvals: xTicks,
+          tickangle: 45
+        },
+        yaxis: {
+          title: 'Cumulative Percentage (%)',
+          tickvals: [0, 50, 100]
+        },
+        margin: { l: 50, r: 30, t: 60, b: 60 },
+        hovermode: 'x unified',
+        plot_bgcolor: '#0a0a0a',
+        paper_bgcolor: '#0a0a0a',
+        font: { color: '#ffffff' }
+      };
+
+      Plotly.newPlot('chessChart', traces, layout, { responsive: true });
+    }
+
+    document.getElementById('csvFile').addEventListener('change', function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function (evt) {
+        const text = evt.target.result;
+        const data = parseCSV(text);
+        const processed = processData(data);
+        renderChart(processed);
+      };
+      reader.readAsText(file);
+    });
+  </script>
+
+</body>
+</html>
